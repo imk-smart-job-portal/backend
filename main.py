@@ -1,20 +1,26 @@
 import json
 import os
-import libsql_experimental as libsql
-from dotenv import load_dotenv
+import sqlite3
+# from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 # from unsloth import FastLanguageModel
 
-load_dotenv()
-
-url = os.getenv("TURSO_DATABASE_URL")
-auth_token = os.getenv("TURSO_AUTH_TOKEN")
-
-conn = libsql.connect("awdaydb.db", sync_url=url, auth_token=auth_token)
-conn.sync()
+conn = sqlite3.connect("awdaydb.db")  # Pastikan file database ada di direktori yang sesuai
+conn.row_factory = sqlite3.Row  # Untuk mengembalikan data sebagai objek seperti dict
 
 app = FastAPI()
+
+# Middleware untuk mengizinkan akses dari berbagai sumber (CORS)
+origins = ["*"]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 max_seq_length = 2048 
 dtype = None
@@ -106,18 +112,6 @@ def smart_recommendation_skill(user_resume: str, job_desc: str):
 #     return json.loads(outputs_str)
     pass
 
-origins = [
-    "*",
-]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 # Smart Applicant Filter
 @app.get('/nn/saf')
 def saf(payload: str):
@@ -160,8 +154,40 @@ def job_vacancies():
 
     return outs 
 
+# Endpoint untuk mendapatkan daftar tabel dalam database SQLite
 @app.get('/tables')
 def list_tables():
     q = "SELECT name FROM sqlite_master WHERE type='table';"
     tables = conn.execute(q).fetchall()
-    return [table[0] for table in tables]
+    return [table['name'] for table in tables]
+
+# Skrip untuk membuat database jika belum ada
+def initialize_database():
+    with sqlite3.connect("awdaydb.db") as conn:
+        cursor = conn.cursor()
+        # Tabel perusahaan
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS companies (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            about TEXT,
+            location TEXT,
+            created_at TEXT,
+            updated_at TEXT
+        )''')
+        # Tabel lowongan kerja
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS job_vacancies (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_id INTEGER,
+            name TEXT,
+            description TEXT,
+            requirement TEXT,
+            created_at TEXT,
+            updated_at TEXT,
+            FOREIGN KEY (company_id) REFERENCES companies (id)
+        )''')
+        conn.commit()
+
+# Inisialisasi database
+initialize_database()
