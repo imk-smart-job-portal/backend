@@ -1,18 +1,26 @@
-import json
-import os
 import sqlite3
 # from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from app.database import Base, engine
+from app.auth import routes as auth_routes, schemas, models, hashing, jwt_handler
 # from unsloth import FastLanguageModel
+from sqlalchemy.orm import Session
+from app.database import get_db
 
 conn = sqlite3.connect("awdaydb.db")  # Pastikan file database ada di direktori yang sesuai
 conn.row_factory = sqlite3.Row  # Untuk mengembalikan data sebagai objek seperti dict
 
+Base.metadata.create_all(bind=engine)
+
 app = FastAPI()
+
+app.include_router(auth_routes.router, prefix="/auth", tags=["Authentication"])
 
 # Middleware untuk mengizinkan akses dari berbagai sumber (CORS)
 origins = ["*"]
+
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -160,6 +168,26 @@ def list_tables():
     q = "SELECT name FROM sqlite_master WHERE type='table';"
     tables = conn.execute(q).fetchall()
     return [table['name'] for table in tables]
+
+@app.post("/register", response_model=schemas.TokenResponse)
+def register_user(user: schemas.ApplicantCreate, db: Session = Depends(get_db)):
+    if db.query(models.Applicant).filter(models.Applicant.email == user.email).first():
+        raise HTTPException(status_code=400, detail="Email already registered")
+    hashed_password = hashing.hash_password(user.password)
+    new_user = models.Applicant(name=user.name, email=user.email, password=hashed_password)
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    token = jwt_handler.create_access_token({"sub": new_user.email})
+    return {"access_token": token, "token_type": "bearer"}
+
+@app.post("/login", response_model=schemas.TokenResponse)
+def login_user(credentials: schemas.ApplicantLogin, db: Session = Depends(get_db)):
+    user = db.query(models.Applicant).filter(models.Applicant.email == credentials.email).first()
+    if not user or not hashing.verify_password(credentials.password, user.password):
+        raise HTTPException(status_code=400, detail="Invalid credentials")
+    token = jwt_handler.create_access_token({"sub": user.email})
+    return {"access_token": token, "token_type": "bearer"}
 
 # Skrip untuk membuat database jika belum ada
 def initialize_database():
