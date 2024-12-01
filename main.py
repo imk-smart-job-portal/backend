@@ -1,9 +1,19 @@
 import json
 import os
 import sqlite3
+<<<<<<< HEAD
 # from dotenv import load_dotenv
 from fastapi import FastAPI
+=======
+import hashlib
+import jwt
+import datetime
+from fastapi import FastAPI, HTTPException, Depends
+>>>>>>> fc7cab9 (update main.py)
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import OAuth2PasswordBearer
+
+
 # from unsloth import FastLanguageModel
 
 conn = sqlite3.connect("awdaydb.db")  # Pastikan file database ada di direktori yang sesuai
@@ -26,12 +36,40 @@ max_seq_length = 2048
 dtype = None
 load_in_4bit = True
 
+SECRET_KEY = "your-secret-key"  
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
+# Fungsi untuk membuat JWT token
+def create_jwt(company_id: int, company_name: str):
+    expiration_time = datetime.datetime.utcnow() + datetime.timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    payload = {
+        "company_id": company_id,
+        "company_name": company_name,
+        "exp": expiration_time
+    }
+    token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+    return token
+
+# Fungsi untuk memverifikasi JWT token
+def verify_jwt(token: str):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token has expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
 # model, tokenizer = FastLanguageModel.from_pretrained(
 #     model_name='estradax/awday-llm-v2',
 #     max_seq_length=max_seq_length,
 #     dtype=dtype,
 #     load_in_4bit=load_in_4bit,
 # )
+
+def hash_password(password: str) -> str:
+    return hashlib.sha256(password.encode()).hexdigest()
 
 def smart_applicant_filter(payload: str):
 #     system_prompt = """
@@ -127,6 +165,59 @@ def sjf(payload: str):
 def srs(user_resume: str, job_desc: str):
     return smart_recommendation_skill(user_resume, job_desc)
 
+# Endpoint untuk login dan mendapatkan token JWT
+@app.post('/companies/login')
+def login_company(email: str, password: str):
+    hashed_password = hash_password(password)
+    with sqlite3.connect("awdaydb.db") as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT * FROM companies WHERE email = ? AND password = ?
+        ''', (email, hashed_password))
+        company = cursor.fetchone()
+        if company:
+            # Membuat token JWT
+            token = create_jwt(company[0], company[2])  # company[0] = company_id, company[2] = company_name
+            return {"message": "Login successful", "access_token": token}
+        else:
+            raise HTTPException(status_code=401, detail="Invalid email or password")
+
+# Endpoint untuk mendapatkan data perusahaan yang login (memerlukan JWT)
+@app.get("/companies/me")
+def get_company_data(token: str = Depends(verify_jwt)):
+    company_id = token['company_id']
+    with sqlite3.connect("awdaydb.db") as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM companies WHERE id = ?", (company_id,))
+        company = cursor.fetchone()
+        if company:
+            return {
+                "id": company[0],
+                "email": company[1],
+                "name": company[2],
+                "about": company[3],
+                "location": company[4],
+                "phone_number": company[5],
+            }
+        else:
+            raise HTTPException(status_code=404, detail="Company not found")
+
+# Endpoint untuk mendaftar perusahaan
+@app.post('/companies/register')
+def register_company(email: str, password: str, about: str, location: str, company_name: str, phone_number: str):
+    hashed_password = hash_password(password)
+    try:
+        with sqlite3.connect("awdaydb.db") as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO companies (email, password, about, location, name, phone_number, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+            ''', (email, hashed_password, about, location, company_name, phone_number))
+            conn.commit()
+        return {"message": "Company registered successfully"}
+    except sqlite3.IntegrityError:
+        raise HTTPException(status_code=400, detail="Email already exists")
+
 @app.get('/job-vacancies')
 def job_vacancies():
     q = 'SELECT * FROM job_vacancies JOIN companies ON job_vacancies.company_id = companies.id'
@@ -154,12 +245,47 @@ def job_vacancies():
 
     return outs 
 
+<<<<<<< HEAD
+=======
+
+def get_db():
+    conn = sqlite3.connect("awdaydb.db")
+    conn.row_factory = sqlite3.Row
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+>>>>>>> fc7cab9 (update main.py)
 # Endpoint untuk mendapatkan daftar tabel dalam database SQLite
 @app.get('/tables')
-def list_tables():
+def list_tables(db: sqlite3.Connection = Depends(get_db)):
     q = "SELECT name FROM sqlite_master WHERE type='table';"
+<<<<<<< HEAD
     tables = conn.execute(q).fetchall()
     return [table['name'] for table in tables]
+=======
+    tables = db.execute(q).fetchall()
+    return [table["name"] for table in tables]
+
+@app.get('/tables/companies')
+def inspect_table_companies(db: sqlite3.Connection = Depends(get_db)):
+    q = "PRAGMA table_info(companies);"
+    columns = db.execute(q).fetchall()
+    return [{"id": col[0], "name": col[1], "type": col[2]} for col in columns]
+
+@app.get('/companies/all')
+def list_companies(db: sqlite3.Connection = Depends(get_db)):
+    q = "SELECT * FROM companies;"
+    companies = db.execute(q).fetchall()
+    return [dict(company) for company in companies]
+
+@app.get('/tables/inspect/{table_name}')
+def inspect_table(table_name: str, db: sqlite3.Connection = Depends(get_db)):
+    q = f"PRAGMA table_info({table_name});"
+    columns = db.execute(q).fetchall()
+    return [{"id": col[0], "name": col[1], "type": col[2]} for col in columns]
+>>>>>>> fc7cab9 (update main.py)
 
 # Skrip untuk membuat database jika belum ada
 def initialize_database():
@@ -244,5 +370,11 @@ def initialize_database():
 
         conn.commit()
 
+<<<<<<< HEAD
+=======
+
+
+    
+>>>>>>> fc7cab9 (update main.py)
 # Inisialisasi database
 initialize_database()
