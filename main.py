@@ -2,21 +2,225 @@ import json
 import os
 import sqlite3
 # from dotenv import load_dotenv
-from fastapi import FastAPI
-import hashlib
-import jwt
-import datetime
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import OAuth2PasswordBearer
+# from unsloth import FastLanguageModel
+from pydantic import BaseModel
+from passlib.context import CryptContext
+import jwt as pyjwt
+from datetime import datetime, timedelta
+from fastapi import File, UploadFile
+from PyPDF2 import PdfReader
+from docx import Document
+import json
+from io import BytesIO
 
 
-from unsloth import FastLanguageModel
+##conn = sqlite3.connect("awdaydb.db")  # Pastikan file database ada di direktori yang sesuai
+##conn.row_factory = sqlite3.Row  # Untuk mengembalikan data sebagai objek seperti dict
 
-conn = sqlite3.connect("job_portal.db")  # Pastikan file database ada di direktori yang sesuai
-conn.row_factory = sqlite3.Row  # Untuk mengembalikan data sebagai objek seperti dict
+DATABASE = "job_portal.db"
+conn = sqlite3.connect(DATABASE, check_same_thread=False)
+conn.row_factory = sqlite3.Row
+
+SECRET_KEY = "your-secret-key"  # Ganti dengan secret key Anda
+ALGORITHM = "HS256"
+
+#Helper Ekstrasi
+def extract_text_from_pdf(file_content: bytes) -> str:
+    """Ekstrak teks dari file PDF."""
+    pdf_reader = PdfReader(BytesIO(file_content))
+    text = ""
+    for page in pdf_reader.pages:
+        text += page.extract_text()
+    return text.strip()
+
+def extract_text_from_docx(file_content: bytes) -> str:
+    """Ekstrak teks dari file DOCX."""
+    doc = Document(BytesIO(file_content))
+    text = ""
+    for paragraph in doc.paragraphs:
+        text += paragraph.text + "\n"
+    return text.strip()
 
 app = FastAPI()
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# Models
+class RegisterRequest(BaseModel):
+    role_id: int
+    name: str
+    email: str
+    phone_number: str
+    password: str
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str
+
+# Helper Functions
+def create_token(data: dict, expires_delta: timedelta = timedelta(hours=1)):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + expires_delta
+    to_encode.update({"exp": expire})
+    return pyjwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+def hash_password(password: str):
+    return pwd_context.hash(password)
+
+def verify_password(plain_password: str, hashed_password: str):
+    return pwd_context.verify(plain_password, hashed_password)
+
+# Endpoints register
+@app.post("/register", response_model=TokenResponse)
+def register_user(user: RegisterRequest):
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM applicants WHERE email = ?", (user.email,))
+    if cursor.fetchone():
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    hashed_password = hash_password(user.password)
+    cursor.execute("""
+        INSERT INTO applicants (role_id, name, email, phone_number, password)
+        VALUES (?, ?, ?, ?, ?)
+    """, (user.role_id, user.name, user.email, user.phone_number, hashed_password))
+    conn.commit()
+    
+    token = create_token({"sub": user.email})
+    return {"access_token": token, "token_type": "bearer"}
+#endpoint login
+@app.post("/login", response_model=TokenResponse)
+def login_user(credentials: LoginRequest):
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM applicants WHERE email = ?", (credentials.email,))
+    user = cursor.fetchone()
+    if not user or not verify_password(credentials.password, user["password"]):
+        raise HTTPException(status_code=400, detail="Invalid credentials")
+    
+    token = create_token({"sub": user["email"]})
+    return {"access_token": token, "token_type": "bearer"}
+
+#endpoint upload resume
+@app.post("/upload-resume")
+async def upload_resume(applicant_id: int, file: UploadFile = File(...)):
+    # Validasi format file
+    if file.content_type == "application/pdf":
+        # Baca teks dari file PDF
+        reader = PdfReader(file.file)
+        text = " ".join([page.extract_text() for page in reader.pages])
+    elif file.content_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+        # Baca teks dari file DOCX
+        doc = Document(file.file)
+        text = " ".join([p.text for p in doc.paragraphs])
+    else:
+        # Jika format file tidak valid
+        raise HTTPException(status_code=400, detail="Unsupported file format")
+
+    # Konversi teks mentah ke JSON terstruktur (contoh sederhana)
+    parsed_json = {
+        "applicant_id": applicant_id,
+        "raw_text": text,
+        "name": None,  # Ekstraksi nama (gunakan regex atau NLP di masa depan)
+        "email": None,  # Ekstraksi email
+        "skills": [],   # Ekstraksi skill
+        "education": None,  # Ekstraksi pendidikan
+        "experience": None  # Ekstraksi pengalaman kerja
+    }
+
+    # Ubah JSON menjadi string sebelum disimpan
+    json_string = json.dumps(parsed_json)
+
+    # Simpan string JSON ke database
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO resumes (applicant_id, files) VALUES (?, ?)",
+        (applicant_id, json_string)
+    )
+    conn.commit()
+
+    return {"message": "Resume uploaded and processed successfully"}
+
+#Endpoint cek resume
+@app.get("/resume/{applicant_id}")
+def get_resume(applicant_id: int):
+    cursor = conn.cursor()
+    cursor.execute("SELECT files FROM resumes WHERE applicant_id = ?", (applicant_id,))
+    result = cursor.fetchone()
+    if result:
+        # Ubah string JSON kembali ke objek JSON
+        resume_json = json.loads(result["files"])
+        return resume_json
+    raise HTTPException(status_code=404, detail="Resume not found")
+
+@app.put("/resume/{resume_id}")
+async def update_resume(resume_id: int, file: UploadFile = File(...)):
+    # Cek apakah resume dengan resume_id ada
+    cursor = conn.cursor()
+    cursor.execute("SELECT applicant_id FROM resumes WHERE id = ?", (resume_id,))
+    result = cursor.fetchone()
+
+    if not result:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    applicant_id = result[0]  # Ambil applicant_id dari database
+
+    # Validasi format file
+    if file.content_type == "application/pdf":
+        # Baca teks dari file PDF
+        reader = PdfReader(file.file)
+        text = " ".join([page.extract_text() for page in reader.pages])
+    elif file.content_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+        # Baca teks dari file DOCX
+        doc = Document(file.file)
+        text = " ".join([p.text for p in doc.paragraphs])
+    else:
+        # Jika format file tidak valid
+        raise HTTPException(status_code=400, detail="Unsupported file format")
+
+    # Konversi teks mentah ke JSON terstruktur (contoh sederhana)
+    parsed_json = {
+        "applicant_id": applicant_id,
+        "raw_text": text,
+        "name": None,  # Ekstraksi nama (gunakan regex atau NLP di masa depan)
+        "email": None,  # Ekstraksi email
+        "skills": [],   # Ekstraksi skill
+        "education": None,  # Ekstraksi pendidikan
+        "experience": None  # Ekstraksi pengalaman kerja
+    }
+
+    # Ubah JSON menjadi string sebelum disimpan
+    json_string = json.dumps(parsed_json)
+
+    # Update resume di database
+    cursor.execute(
+        "UPDATE resumes SET files = ? WHERE id = ?",
+        (json_string, resume_id)
+    )
+    conn.commit()
+
+    return {"message": "Resume updated successfully"}
+
+#endpoint delete resume
+@app.delete("/resume/{resume_id}")
+def delete_resume(resume_id: int):
+    # Cek apakah resume ada di database
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM resumes WHERE id = ?", (resume_id,))
+    resume = cursor.fetchone()
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    
+    # Hapus resume dari database
+    cursor.execute("DELETE FROM resumes WHERE id = ?", (resume_id,))
+    conn.commit()
+
+    return {"message": "Resume deleted successfully"}
+
 
 # Middleware untuk mengizinkan akses dari berbagai sumber (CORS)
 origins = ["*"]
@@ -70,7 +274,7 @@ def hash_password(password: str) -> str:
 
 def smart_applicant_filter(payload: str):
 #     system_prompt = """
-# You are a summarizer system that produces required skills based on the job description provided, the output must be a JSON object that has the keys `required_skills` array of strings. Don't add "json```" string. Don't provide an explanation, it just has to be JSON, please.
+# You are a summarizer system that produces required skills based on the job description provided, the output must be a JSON object that has the keys required_skills array of strings. Don't add "json" string. Don't provide an explanation, it just has to be JSON, please.
 # 
 # """
 #     user_prompt = """
@@ -96,7 +300,7 @@ def smart_applicant_filter(payload: str):
 
 def smart_job_filter(payload: str):
 #     system_prompt = """
-# You are a system that extracts required skills from the resume provided by the user. The output must be a JSON object with a single key "required_skills", containing an array of unique strings. Ensure that the output is strictly in JSON format without any additional code formatting like "```json". Do not duplicate any skills.
+# You are a system that extracts required skills from the resume provided by the user. The output must be a JSON object with a single key "required_skills", containing an array of unique strings. Ensure that the output is strictly in JSON format without any additional code formatting like "json". Do not duplicate any skills.
 # """
 #     user_prompt = """
 # # User Data 
