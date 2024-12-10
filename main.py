@@ -1,22 +1,19 @@
 import json
 import os
 import sqlite3
-<<<<<<< HEAD
 # from dotenv import load_dotenv
 from fastapi import FastAPI
-=======
 import hashlib
 import jwt
 import datetime
 from fastapi import FastAPI, HTTPException, Depends
->>>>>>> fc7cab9 (update main.py)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
 
 
-# from unsloth import FastLanguageModel
+from unsloth import FastLanguageModel
 
-conn = sqlite3.connect("awdaydb.db")  # Pastikan file database ada di direktori yang sesuai
+conn = sqlite3.connect("job_portal.db")  # Pastikan file database ada di direktori yang sesuai
 conn.row_factory = sqlite3.Row  # Untuk mengembalikan data sebagai objek seperti dict
 
 app = FastAPI()
@@ -245,28 +242,21 @@ def job_vacancies():
 
     return outs 
 
-<<<<<<< HEAD
-=======
 
 def get_db():
-    conn = sqlite3.connect("awdaydb.db")
+    conn = sqlite3.connect("job_portal.db")
     conn.row_factory = sqlite3.Row
     try:
         yield conn
     finally:
         conn.close()
 
->>>>>>> fc7cab9 (update main.py)
 # Endpoint untuk mendapatkan daftar tabel dalam database SQLite
 @app.get('/tables')
 def list_tables(db: sqlite3.Connection = Depends(get_db)):
     q = "SELECT name FROM sqlite_master WHERE type='table';"
-<<<<<<< HEAD
     tables = conn.execute(q).fetchall()
     return [table['name'] for table in tables]
-=======
-    tables = db.execute(q).fetchall()
-    return [table["name"] for table in tables]
 
 @app.get('/tables/companies')
 def inspect_table_companies(db: sqlite3.Connection = Depends(get_db)):
@@ -285,7 +275,6 @@ def inspect_table(table_name: str, db: sqlite3.Connection = Depends(get_db)):
     q = f"PRAGMA table_info({table_name});"
     columns = db.execute(q).fetchall()
     return [{"id": col[0], "name": col[1], "type": col[2]} for col in columns]
->>>>>>> fc7cab9 (update main.py)
 
 # Skrip untuk membuat database jika belum ada
 def initialize_database():
@@ -370,11 +359,8 @@ def initialize_database():
 
         conn.commit()
 
-<<<<<<< HEAD
-=======
 
 
     
->>>>>>> fc7cab9 (update main.py)
 # Inisialisasi database
 initialize_database()
