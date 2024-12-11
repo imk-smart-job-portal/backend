@@ -4,10 +4,10 @@ import sqlite3
 # from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-# from unsloth import FastLanguageModel
+from unsloth import FastLanguageModel
 from pydantic import BaseModel
 from passlib.context import CryptContext
-import jwt as pyjwt
+import jwt as pyjwt 
 from datetime import datetime, timedelta
 from fastapi import File, UploadFile
 from PyPDF2 import PdfReader
