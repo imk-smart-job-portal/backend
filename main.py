@@ -1,10 +1,8 @@
 import json
 import sqlite3
 # from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Depends, Security
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import OAuth2PasswordBearer
-from typing import Annotated
 # from unsloth import FastLanguageModel 
 from pydantic import BaseModel
 from passlib.context import CryptContext
@@ -13,7 +11,6 @@ from datetime import datetime, timedelta
 from fastapi import File, UploadFile
 from PyPDF2 import PdfReader
 from docx import Document
-import hashlib
 from io import BytesIO
 
 # Konfigurasi logging
@@ -31,9 +28,9 @@ logger.debug("This is a debug message")
 origins = ["*"]
 from dotenv import load_dotenv
 from auth import hash_password_hashlib, create_jwt, verify_jwt
-from filters import smart_applicant_filter, smart_job_filter, smart_recommendation_skill
 from database import get_db_connection, initialize_database
 from jobs import router as jobs_router
+from genai import generate_required_skills
 
 load_dotenv()
 
@@ -186,25 +183,14 @@ async def upload_resume(token: dict = Depends(verify_jwt), file: UploadFile = Fi
         # Jika format file tidak valid
         raise HTTPException(status_code=400, detail="Unsupported file format")
 
-    # Konversi teks mentah ke JSON terstruktur (contoh sederhana)
-    parsed_json = {
-        "applicant_id": applicant_id,
-        "raw_text": text,
-        "name": None,  # Ekstraksi nama (gunakan regex atau NLP di masa depan)
-        "email": None,  # Ekstraksi email
-        "skills": [],   # Ekstraksi skill
-        "education": None,  # Ekstraksi pendidikan
-        "experience": None  # Ekstraksi pengalaman kerja
-    }
+    required_skills = generate_required_skills(text)
 
-    # Ubah JSON menjadi string sebelum disimpan
-    json_string = json.dumps(parsed_json)
-
+    print(required_skills)
     # Simpan string JSON ke database
     cursor = conn.cursor()
     cursor.execute(
-        "INSERT INTO resumes (applicant_id, files) VALUES (?, ?)",
-        (applicant_id, json_string)
+        "INSERT INTO resumes (applicant_id, files, required_skills) VALUES (?, ?, ?)",
+        (applicant_id, text, required_skills)
     )
     conn.commit()
 
@@ -248,23 +234,23 @@ async def update_resume(resume_id: int, file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="Unsupported file format")
 
     # Konversi teks mentah ke JSON terstruktur (contoh sederhana)
-    parsed_json = {
-        "applicant_id": applicant_id,
-        "raw_text": text,
-        "name": None,  # Ekstraksi nama (gunakan regex atau NLP di masa depan)
-        "email": None,  # Ekstraksi email
-        "skills": [],   # Ekstraksi skill
-        "education": None,  # Ekstraksi pendidikan
-        "experience": None  # Ekstraksi pengalaman kerja
-    }
+    # parsed_json = {
+    #     "applicant_id": applicant_id,
+    #     "raw_text": text,
+    #     "name": None,  # Ekstraksi nama (gunakan regex atau NLP di masa depan)
+    #     "email": None,  # Ekstraksi email
+    #     "skills": [],   # Ekstraksi skill
+    #     "education": None,  # Ekstraksi pendidikan
+    #     "experience": None  # Ekstraksi pengalaman kerja
+    # }
 
     # Ubah JSON menjadi string sebelum disimpan
-    json_string = json.dumps(parsed_json)
+    # json_string = json.dumps(parsed_json)
 
     # Update resume di database
     cursor.execute(
         "UPDATE resumes SET files = ? WHERE id = ?",
-        (json_string, resume_id)
+        (text, resume_id)
     )
     conn.commit()
 
@@ -285,28 +271,6 @@ def delete_resume(resume_id: int):
     conn.commit()
 
     return {"message": "Resume deleted successfully"}
-
-
-# model, tokenizer = FastLanguageModel.from_pretrained(
-#     model_name='estradax/awday-llm-v2',
-#     max_seq_length=max_seq_length,
-#     dtype=dtype,
-#     load_in_4bit=load_in_4bit,
-# )
-
-# Smart Applicant Filter
-# Endpoints untuk Smart Filters
-@app.get('/nn/saf')
-def saf(payload: str):
-    return smart_applicant_filter(payload)
-
-@app.get('/nn/sjf')
-def sjf(payload: str):
-    return smart_job_filter(payload)
-
-@app.get('/nn/srs')
-def srs(user_resume: str, job_desc: str):
-    return smart_recommendation_skill(user_resume, job_desc)
 
 # Endpoint login dan mendapatkan JWT
 @app.post('/companies/login')

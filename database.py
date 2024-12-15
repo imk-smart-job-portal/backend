@@ -64,7 +64,7 @@ def initialize_database():
             education_level TEXT,
             career_level TEXT,
             employment_type TEXT,
-            required_skills TEXT, -- JSON format
+            required_skills TEXT,
             FOREIGN KEY (company_id) REFERENCES companies (id),
             FOREIGN KEY (category_id) REFERENCES categories (id)
         )''')
@@ -75,6 +75,7 @@ def initialize_database():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             applicant_id INTEGER NOT NULL,
             files TEXT NOT NULL,
+            required_skills TEXT,
             FOREIGN KEY (applicant_id) REFERENCES applicants (id)
         )''')
 
