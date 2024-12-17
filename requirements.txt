@@ -40,3 +40,4 @@ passlib[bcrypt]>=1.7.4
 python-jose
 PyJWT>=2.7.0
 python-docx
+google-generativeai
