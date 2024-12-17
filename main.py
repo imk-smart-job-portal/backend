@@ -137,12 +137,10 @@ def register_user(user: RegisterRequest):
     """, (1, user.name, user.email, user.phone_number, hashed_password))
     conn.commit()
     
-    token = create_token({"sub": user.email})
-    return {"access_token": token, "token_type": "bearer"}
+    return {"message": "User registered successfully"}
 #endpoint login
 @app.post("/login", response_model=TokenResponse)
 def login_user(credentials: LoginRequest):
-    logger.debug(f"Login attempt with email: {credentials.email}")
     cursor = conn.cursor()
     hashed_password = hash_password_hashlib(credentials.password)
     try:
@@ -151,14 +149,19 @@ def login_user(credentials: LoginRequest):
 
         # Check if user exists and password matches
         if not user:
-            logger.debug(f"User with email {credentials.email} not found.")
-            raise HTTPException(status_code=400, detail="Invalid credentials")
+            cursor.execute('SELECT * FROM companies WHERE email = ? AND password = ?', (credentials.email, hashed_password))
+            company = cursor.fetchone()
+            if company:
+                token = create_jwt({"sub": company['email'], "company_id": company["id"]})  # company[0] = company_id, company[2] = company_name
+                return {"id": company["id"], "role": "company",  "token": token}
+            else:
+                raise HTTPException(status_code=401, detail="Invalid email or password")
 
         # Create token if login is successful
         token = create_token({"sub": user["email"], "applicant_id": user["id"]})
         logger.debug(f"Login successful for user: {credentials.email}")
 
-        return {"access_token": token, "token_type": "bearer"}
+        return {"id": user["id"], "role": "user",  "token": token}
     
     except Exception as e:
         logger.debug(f"Error during login: {e}")
@@ -270,20 +273,6 @@ def delete_resume(resume_id: int):
     conn.commit()
 
     return {"message": "Resume deleted successfully"}
-
-# Endpoint login dan mendapatkan JWT
-@app.post('/companies/login')
-def login_company(email: str, password: str):
-    hashed_password = hash_password_hashlib(password)
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute('SELECT * FROM companies WHERE email = ? AND password = ?', (email, hashed_password))
-        company = cursor.fetchone()
-        if company:
-            token = create_jwt(company[0], company[2])  # company[0] = company_id, company[2] = company_name
-            return {"message": "Login successful", "access_token": token}
-        else:
-            raise HTTPException(status_code=401, detail="Invalid email or password")
 
 # Endpoint untuk mendapatkan data perusahaan
 @app.get("/companies/me")
