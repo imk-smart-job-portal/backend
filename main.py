@@ -33,22 +33,6 @@ from genai import generate_required_skills
 
 load_dotenv()
 
-app = FastAPI()
-
-# Middleware CORS
-origins = ["http://localhost:5173"]
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-max_seq_length = 2048 
-dtype = None
-load_in_4bit = True
-
 SECRET_KEY = "your-secret-key"  
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
@@ -75,8 +59,6 @@ def extract_text_from_docx(file_content: bytes) -> str:
     for paragraph in doc.paragraphs:
         text += paragraph.text + "\n"
     return text.strip()
-
-app = FastAPI()
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -105,6 +87,19 @@ def verify_password(plain_password: str, hashed_password: str):
     logger.debug(f"Verifying password: {plain_password} with hash: {hashed_password}")
     return pwd_context.verify(plain_password, hashed_password)
 
+app = FastAPI()
+
+# Middleware CORS
+origins = ["http://localhost:5173", "http://127.0.0.1:5173",
+           "https://localhost:5173", "https://127.0.0.1:5173"]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Endpoints register
 @app.post("/register")
@@ -148,7 +143,7 @@ def login_user(credentials: LoginRequest):
             cursor.execute('SELECT * FROM companies WHERE email = ? AND password = ?', (credentials.email, hashed_password))
             company = cursor.fetchone()
             if company:
-                token = create_jwt({"sub": company['email'], "company_id": company["id"]})  # company[0] = company_id, company[2] = company_name
+                token = create_jwt(sub=company['email'], company_id=company["id"])  # company[0] = company_id, company[2] = company_name
                 return {"id": company["id"], "role": "company",  "token": token}
             else:
                 raise HTTPException(status_code=401, detail="Invalid email or password")

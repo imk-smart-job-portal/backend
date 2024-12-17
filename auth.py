@@ -15,11 +15,11 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 def hash_password_hashlib(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
 
-def create_jwt(company_id: int, company_name: str):
+def create_jwt(sub: str, company_id: int):
     expiration_time = datetime.datetime.utcnow() + datetime.timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     payload = {
         "company_id": company_id,
-        "company_name": company_name,
+        "sub": sub,
         "exp": expiration_time
     }
     token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
