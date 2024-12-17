@@ -25,7 +25,6 @@ logger.debug("This is a debug message")
 
 
 # Middleware untuk mengizinkan akses dari berbagai sumber (CORS)
-origins = ["*"]
 from dotenv import load_dotenv
 from auth import hash_password_hashlib, create_jwt, verify_jwt
 from database import get_db_connection, initialize_database
