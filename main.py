@@ -91,10 +91,6 @@ class LoginRequest(BaseModel):
     email: str
     password: str
 
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str
-
 # Helper Functions
 def create_token(data: dict, expires_delta: timedelta = timedelta(hours=1)):
     to_encode = data.copy()
@@ -111,7 +107,7 @@ def verify_password(plain_password: str, hashed_password: str):
 
 
 # Endpoints register
-@app.post("/register", response_model=TokenResponse)
+@app.post("/register")
 def register_user(user: RegisterRequest):
     cursor = conn.cursor()
 
@@ -139,7 +135,7 @@ def register_user(user: RegisterRequest):
     
     return {"message": "User registered successfully"}
 #endpoint login
-@app.post("/login", response_model=TokenResponse)
+@app.post("/login")
 def login_user(credentials: LoginRequest):
     cursor = conn.cursor()
     hashed_password = hash_password_hashlib(credentials.password)
