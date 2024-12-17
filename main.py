@@ -161,7 +161,7 @@ def login_user(credentials: LoginRequest):
         token = create_token({"sub": user["email"], "applicant_id": user["id"]})
         logger.debug(f"Login successful for user: {credentials.email}")
 
-        return {"id": user["id"], "role": "user",  "token": token}
+        return {"id": user["id"], "role": "applicant",  "token": token}
     
     except Exception as e:
         logger.debug(f"Error during login: {e}")
