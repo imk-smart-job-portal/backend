@@ -58,22 +58,32 @@ def initialize_database():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             company_id INTEGER NOT NULL,
             category_id INTEGER,
-            title TEXT NOT NULL,
-            description TEXT NOT NULL,
-            experience_level TEXT,
-            education_level TEXT,
-            career_level TEXT,
-            employment_type TEXT,
-            required_skills TEXT,
+            title TEXT NOT NULL, -- Posisi pekerjaan
+            description TEXT NOT NULL, -- Deskripsi pekerjaan
+            experience_level TEXT, -- Pengalaman
+            education_level TEXT, -- Education
+            career_level TEXT, -- Tidak ada field langsung, bisa diisi data terkait
+            employment_type TEXT, -- Tipe Pekerjaan
+            skills TEXT, -- Skills
+            tags TEXT, -- Tags
+            min_salary REAL, -- Min. Gaji
+            max_salary REAL, -- Max. Gaji
+            salary_type TEXT, -- Tipe Gaji
+            expiration_date DATE, -- Expiration Date
+            job_status TEXT, -- Job Status
+            required_skills TEXT, 
             FOREIGN KEY (company_id) REFERENCES companies (id),
             FOREIGN KEY (category_id) REFERENCES categories (id)
-        )''')
+        )
+    ''')
+
 
         # Tabel resumes
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS resumes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             applicant_id INTEGER NOT NULL,
+            file_name TEXT NOT NULL,
             files TEXT NOT NULL,
             required_skills TEXT,
             FOREIGN KEY (applicant_id) REFERENCES applicants (id)

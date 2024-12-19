@@ -161,7 +161,13 @@ def login_user(credentials: LoginRequest):
 #endpoint upload resume
 @app.post("/upload-resume")
 async def upload_resume(token: dict = Depends(verify_jwt), file: UploadFile = File(...)):
+    if not file.file:
+        raise HTTPException(status_code=400, detail="File is empty")
+    print(f"Received file: {file.filename}, Content Type: {file.content_type}")
     applicant_id = token['applicant_id']
+
+    if not applicant_id:
+        raise HTTPException(status_code=400, detail="Invalid token data")
     
     # Validasi format file
     if file.content_type == "application/pdf":
@@ -182,8 +188,8 @@ async def upload_resume(token: dict = Depends(verify_jwt), file: UploadFile = Fi
     # Simpan string JSON ke database
     cursor = conn.cursor()
     cursor.execute(
-        "INSERT INTO resumes (applicant_id, files, required_skills) VALUES (?, ?, ?)",
-        (applicant_id, text, required_skills)
+        "INSERT INTO resumes (applicant_id, file_name, files, required_skills) VALUES (?, ?, ?, ?)",
+        (applicant_id, file.filename, text, required_skills)
     )
     conn.commit()
 
@@ -193,12 +199,10 @@ async def upload_resume(token: dict = Depends(verify_jwt), file: UploadFile = Fi
 @app.get("/resume/{applicant_id}")
 def get_resume(applicant_id: int):
     cursor = conn.cursor()
-    cursor.execute("SELECT files FROM resumes WHERE applicant_id = ?", (applicant_id,))
+    cursor.execute("SELECT file_name FROM resumes WHERE applicant_id = ?", (applicant_id,))
     result = cursor.fetchone()
     if result:
-        # Ubah string JSON kembali ke objek JSON
-        resume_json = json.loads(result["files"])
-        return resume_json
+        return result
     raise HTTPException(status_code=404, detail="Resume not found")
 
 @app.put("/resume/{resume_id}")
@@ -300,35 +304,6 @@ def register_company(email: str, password: str, company_name: str, phone_number:
     except sqlite3.IntegrityError:
         raise HTTPException(status_code=400, detail="Email already exists")
 
-# Endpoint untuk mendapatkan daftar pekerjaan
-@app.get('/job-vacancies')
-def job_vacancies():
-    # Inisialisasi database
-    initialize_database()
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute('SELECT * FROM job_vacancies JOIN companies ON job_vacancies.company_id = companies.id')
-        data = cursor.fetchall()
-        outs = []
-        for d in data:
-            out = {
-                'id': d[0],
-                'company_id': d[1],
-                'name': d[2],
-                'description': d[3],
-                'requirement': d[4],
-                'created_at': d[5],
-                'updated_at': d[6],
-                'company': {
-                    'id': d[7],
-                    'user_id': d[8],
-                    'created_at': d[11],
-                    'updated_at': d[12],
-                },
-            }
-            outs.append(out)
-        return outs
-    
 app.include_router(jobs_router)
 
 
